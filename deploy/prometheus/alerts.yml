@@ -1,0 +1,81 @@
+# Prometheus alerting rules for the data centre agent. Thresholds are starting points:
+# tune them after a week of real traffic. Each alert maps to a row in docs/RUNBOOK.md.
+groups:
+  - name: dc-agent
+    rules:
+      - alert: DcAgentDown
+        expr: up{job="dc-agent"} == 0
+        for: 2m
+        labels: {severity: page}
+        annotations:
+          summary: "dc-agent target is down"
+
+      - alert: DcAgentBreakerOpen
+        expr: increase(dc_agent_breaker_opened_total[10m]) > 0
+        labels: {severity: page}
+        annotations:
+          summary: "Circuit breaker {{ $labels.name }} opened"
+          runbook: "docs/RUNBOOK.md - breaker rows"
+
+      - alert: DcAgentErrorRateHigh
+        expr: |
+          sum(rate(dc_agent_answers_total{outcome="error"}[10m]))
+            / clamp_min(sum(rate(dc_agent_answers_total[10m])), 0.001) > 0.10
+        for: 10m
+        labels: {severity: page}
+        annotations:
+          summary: "More than 10% of answers are errors; see dc_agent_failures_total by kind"
+
+      - alert: DcAgentClarificationRateHigh
+        expr: |
+          sum(rate(dc_agent_answers_total{outcome="clarification"}[1h]))
+            / clamp_min(sum(rate(dc_agent_answers_total[1h])), 0.001) > 0.30
+        for: 1h
+        labels: {severity: ticket}
+        annotations:
+          summary: "Over 30% clarifications: ontology gap or missing synonyms"
+
+      - alert: DcAgentNodeErrors
+        expr: increase(dc_agent_node_errors_total[10m]) > 0
+        labels: {severity: ticket}
+        annotations:
+          summary: "Unhandled exception in node {{ $labels.node }}; find node_failed audit lines"
+
+      - alert: DcAgentLatencyHigh
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(dc_agent_node_seconds_bucket[10m]))) > 10
+        for: 15m
+        labels: {severity: ticket}
+        annotations:
+          summary: "p95 node latency above 10s"
+
+      - alert: DcAgentRepeatedBlocks
+        expr: increase(dc_agent_input_blocks_total[15m]) > 20
+        labels: {severity: ticket}
+        annotations:
+          summary: "Many blocked inputs: possible probing; check repeated-block logs"
+
+      - alert: DcAgentOntologyProblems
+        expr: dc_agent_ontology_problems > 0
+        for: 5m
+        labels: {severity: ticket}
+        annotations:
+          summary: "Active ontology release has validation problems (e.g. a concept without a row scope)"
+
+      - alert: DcAgentOntologyReloadFailing
+        expr: increase(dc_agent_ontology_reloads_total{result="failed"}[15m]) > 3
+        labels: {severity: ticket}
+        annotations:
+          summary: "Ontology reloads failing; the last good copy is being served"
+
+      - alert: DcAgentSharedBackendFallback
+        expr: increase(dc_agent_backend_fallback_total[10m]) > 0
+        labels: {severity: ticket}
+        annotations:
+          summary: "Redis unavailable for {{ $labels.backend }}; limits are per replica until it recovers"
+
+      - alert: DcAgentCostRefusals
+        expr: increase(dc_agent_cost_gate_total{decision="refused"}[1h]) > 10
+        labels: {severity: ticket}
+        annotations:
+          summary: "Many queries refused by the cost gate; review DC_MAX_SCAN_BYTES or ontology"

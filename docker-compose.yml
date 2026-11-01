@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_PASSWORD: dev-only-change-me
+      POSTGRES_DB: dcagent
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./sql/ontology_schema.sql:/docker-entrypoint-initdb.d/01_ontology.sql:ro
+  redis:
+    # Shared rate limits, session locks and plan cache across replicas (DC_REDIS_URL).
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"

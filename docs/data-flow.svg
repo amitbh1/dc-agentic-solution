@@ -1,0 +1,257 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1290" height="1350" viewBox="0 0 1290 1350" role="img" aria-labelledby="title desc">
+  <title id="title">dc-agent: life of a question</title>
+  <desc id="desc">How one question travels from POST /ask through the API checks and the nine LangGraph steps to the answer, which services each step uses, and where a turn can end early.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#334155"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#C0392B"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748B"/>
+    </marker>
+    <style>
+      text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      .h1 { font-size: 22px; font-weight: 700; fill: #0F172A; }
+      .h2 { font-size: 13px; fill: #475569; }
+      .t { font-size: 15px; font-weight: 700; fill: #0F172A; }
+      .m { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+      .d { font-size: 12.5px; fill: #334155; }
+      .s { font-size: 12px; fill: #1E293B; }
+      .x { font-size: 11.5px; font-weight: 500; fill: #B42318; }
+      .xn { font-size: 10.5px; fill: #7F1D1D; }
+      .g { font-size: 11px; fill: #64748B; }
+      .lg { font-size: 11px; fill: #334155; }
+      .client { fill: #FFFFFF; stroke: #334155; stroke-width: 1.4; }
+      .api { fill: #F1F5F9; stroke: #475569; stroke-width: 1.4; }
+      .node { fill: #EEF0FF; stroke: #4338CA; stroke-width: 1.4; }
+      .opt { fill: #F8F8FF; stroke: #4338CA; stroke-width: 1.4; stroke-dasharray: 6 4; }
+      .store { fill: #E7F5EC; stroke: #2E7D4F; }
+      .ai { fill: #FFF3DF; stroke: #B26A00; }
+      .wh { fill: #E8F0FE; stroke: #1A5FB4; }
+      .ext { fill: #F3E9FB; stroke: #7B3FB5; }
+      .human { fill: #FFF8D1; stroke: #8A6D00; }
+      .obs { fill: #F1F3F5; stroke: #5F6B7A; }
+      .grp { fill: #FAFAFF; stroke: #C7CAF0; stroke-width: 1.2; stroke-dasharray: 6 5; }
+      .conn { stroke: #94A3B8; stroke-width: 1.2; stroke-dasharray: 4 3; fill: none; }
+      .flow { stroke: #334155; stroke-width: 1.6; fill: none; marker-end: url(#a); }
+      .exit { stroke: #C0392B; stroke-width: 1.6; fill: none; }
+      .loop { stroke: #4338CA; stroke-width: 1.5; fill: none; marker-end: url(#a); }
+    </style>
+  </defs>
+
+  <rect width="1290" height="1350" fill="#FFFFFF"/>
+
+  <!-- header -->
+  <text class="h1" x="40" y="42">dc-agent · life of a question</text>
+  <text class="h2" x="40" y="66">From POST /ask to the answer: the API checks, the nine LangGraph steps, the services each step uses (right) and every early exit (left).</text>
+
+  <!-- agent group -->
+  <rect class="grp" x="395" y="278" width="505" height="888" rx="14"/>
+  <text x="410" y="298" style="font-size:13px;font-weight:700;fill:#4338CA">LangGraph agent</text>
+  <text x="890" y="298" text-anchor="end" style="font-size:11.5px;fill:#6366F1">state checkpointed per user:session thread</text>
+
+  <!-- ===== spine ===== -->
+  <!-- r1 client -->
+  <rect class="client" x="440" y="90" width="440" height="72" rx="10"/>
+  <text class="t" x="456" y="116">Client</text>
+  <text class="d" x="456" y="136">POST /ask {question, session_id} · Bearer token</text>
+  <text class="d" x="456" y="152">also /ask/stream (SSE), /ask/approve, /feedback</text>
+
+  <!-- r2 api -->
+  <rect class="api" x="440" y="186" width="440" height="72" rx="10"/>
+  <text class="t" x="456" y="212">API layer <tspan class="g" style="font-weight:400">(FastAPI, before the agent)</tspan></text>
+  <text class="d" x="456" y="232">Request id · 16 KB body cap · OIDC auth (role, claims)</text>
+  <text class="d" x="456" y="248">Session lock · rate limit · daily and tenant budgets</text>
+
+  <!-- r3 guard_input -->
+  <rect class="node" x="440" y="310" width="440" height="72" rx="10"/>
+  <text class="t" x="456" y="336">1 · <tspan class="m">guard_input</tspan></text>
+  <text class="d" x="456" y="356">Reset per-turn state · start the 60 s turn deadline</text>
+  <text class="d" x="456" y="372">Unicode-normalised injection screen · block tracker</text>
+
+  <!-- r4 ground -->
+  <rect class="node" x="440" y="406" width="440" height="72" rx="10"/>
+  <text class="t" x="456" y="432">2 · <tspan class="m">ground</tspan></text>
+  <text class="d" x="456" y="452">Lexical + embedding scoring of metrics (role-filtered)</text>
+  <text class="d" x="456" y="468">Catalogue slice · verified examples · follow-up fallback</text>
+
+  <!-- r5 planner -->
+  <rect class="node" x="440" y="502" width="440" height="72" rx="10"/>
+  <text class="t" x="456" y="528">3 · <tspan class="m">planner</tspan></text>
+  <text class="d" x="456" y="548">Plan cache hit, else Gemini → typed QueryPlan (never SQL)</text>
+  <text class="d" x="456" y="564">Malformed output is retried, within the repair budget</text>
+
+  <!-- r6 compile -->
+  <rect class="node" x="440" y="598" width="440" height="72" rx="10"/>
+  <text class="t" x="456" y="624">4 · <tspan class="m">compile</tspan></text>
+  <text class="d" x="456" y="644">Grants + row scopes on every joined concept · fan-out check</text>
+  <text class="d" x="456" y="660">SQL per engine (single · CTE per grain · split) → SQL guard</text>
+
+  <!-- r7 cost_check -->
+  <rect class="node" x="440" y="694" width="440" height="72" rx="10"/>
+  <text class="t" x="456" y="720">5 · <tspan class="m">cost_check</tspan></text>
+  <text class="d" x="456" y="740">EXPLAIN scan estimate for each SQL part</text>
+  <text class="d" x="456" y="756">Above the cap: refuse · above the threshold: ask the user</text>
+
+  <!-- r8 execute -->
+  <rect class="node" x="440" y="790" width="440" height="72" rx="10"/>
+  <text class="t" x="456" y="816">6 · <tspan class="m">execute</tspan></text>
+  <text class="d" x="456" y="836">Read-only run per engine within the remaining budget</text>
+  <text class="d" x="456" y="852">Merge cross-engine partials · PII redaction</text>
+
+  <!-- r9 check_result -->
+  <rect class="node" x="440" y="886" width="440" height="72" rx="10"/>
+  <text class="t" x="456" y="912">7 · <tspan class="m">check_result</tspan></text>
+  <text class="d" x="456" y="932">Warnings: empty · truncated · mostly-empty column · merged</text>
+
+  <!-- r10 enrich -->
+  <rect class="opt" x="440" y="982" width="440" height="72" rx="10"/>
+  <text class="t" x="456" y="1008">8 · <tspan class="m">enrich</tspan> <tspan class="g" style="font-weight:400">(only when tools are configured)</tspan></text>
+  <text class="d" x="456" y="1028">Role-scoped tools get a row-free context and add notes</text>
+
+  <!-- r11 respond -->
+  <rect class="node" x="440" y="1078" width="440" height="72" rx="10"/>
+  <text class="t" x="456" y="1104">9 · <tspan class="m">respond</tspan></text>
+  <text class="d" x="456" y="1124">Pick outcome · template answer (rows never reach an LLM)</text>
+  <text class="d" x="456" y="1140">Cache plan · save last_plan · audit event · metrics</text>
+
+  <!-- r12 response -->
+  <rect class="client" x="440" y="1190" width="440" height="72" rx="10"/>
+  <text class="t" x="456" y="1216">Response <tspan class="g" style="font-weight:400">(JSON, or the final SSE event)</tspan></text>
+  <text class="d" x="456" y="1236">outcome · answer · columns · rows · warnings · notes</text>
+  <text class="d" x="456" y="1252">sql for admins only · request_id · ontology release</text>
+
+  <!-- spine arrows -->
+  <path class="flow" d="M660,162 V184"/>
+  <path class="flow" d="M660,258 V308"/>
+  <path class="flow" d="M660,382 V404"/>
+  <path class="flow" d="M660,478 V500"/>
+  <path class="flow" d="M660,574 V596"/>
+  <path class="flow" d="M660,670 V692"/>
+  <path class="flow" d="M660,766 V788"/>
+  <path class="flow" d="M660,862 V884"/>
+  <path class="flow" d="M660,958 V980"/>
+  <path class="flow" d="M660,1054 V1076"/>
+  <path class="flow" d="M660,1150 V1188"/>
+
+  <!-- repair loop compile -> planner -->
+  <path class="loop" d="M440,616 H410 V556 H438"/>
+  <text x="404" y="590" text-anchor="end" style="font-size:10.5px;fill:#4338CA">repair</text>
+  <text x="404" y="603" text-anchor="end" style="font-size:10.5px;fill:#4338CA">≤ 2</text>
+
+  <!-- ===== early exits (left) ===== -->
+  <!-- API errors go straight back to the client -->
+  <path d="M440,222 H362" stroke="#64748B" stroke-width="1.5" fill="none" marker-end="url(#ag)"/>
+  <text x="352" y="218" text-anchor="end" style="font-size:11.5px;font-weight:600;fill:#475569">401 · 409 · 413 · 422 · 429</text>
+  <text x="352" y="233" text-anchor="end" class="g">returned before the agent runs</text>
+
+  <!-- exit bus -->
+  <path class="exit" d="M350,346 V1114"/>
+  <path class="exit" d="M350,1114 H438" marker-end="url(#ar)"/>
+  <g class="exit">
+    <path d="M440,346 H350"/>
+    <path d="M440,442 H350"/>
+    <path d="M440,538 H350"/>
+    <path d="M440,634 H350"/>
+    <path d="M440,730 H350"/>
+    <path d="M440,826 H350"/>
+    <path d="M440,922 H350"/>
+  </g>
+  <g fill="#C0392B">
+    <circle cx="350" cy="346" r="3.5"/>
+    <circle cx="350" cy="442" r="3.5"/>
+    <circle cx="350" cy="538" r="3.5"/>
+    <circle cx="350" cy="634" r="3.5"/>
+    <circle cx="350" cy="730" r="3.5"/>
+    <circle cx="350" cy="826" r="3.5"/>
+    <circle cx="350" cy="922" r="3.5"/>
+  </g>
+  <text class="x" x="338" y="350" text-anchor="end">blocked: injection screen matched</text>
+  <text class="x" x="338" y="446" text-anchor="end">clarification: no metric matched</text>
+  <text class="x" x="338" y="542" text-anchor="end">clarification · LLM down · timeout</text>
+  <text class="x" x="338" y="638" text-anchor="end">denied · guard failed · repairs used up</text>
+  <text class="x" x="338" y="734" text-anchor="end">too expensive · declined by the user</text>
+  <text class="x" x="338" y="830" text-anchor="end">timeout · query failed · merge too big</text>
+  <text class="x" x="338" y="921" text-anchor="end">unexpected exception in any node</text>
+  <text class="xn" x="338" y="936" text-anchor="end">(safety net: safe message, never a 500)</text>
+  <text x="338" y="1104" text-anchor="end" style="font-size:12px;font-weight:700;fill:#B42318">every exit → respond</text>
+  <text class="xn" x="338" y="1120" text-anchor="end">user sees a safe message; details go to the audit log</text>
+
+  <!-- ===== services each step uses (right) ===== -->
+  <!-- r2 -->
+  <path class="conn" d="M880,202 H940"/>
+  <rect class="store" x="940" y="186" width="310" height="32" rx="7"/>
+  <text class="s" x="952" y="207">Redis · limits · budgets · session locks</text>
+  <path class="conn" d="M880,242 H940"/>
+  <rect class="ext" x="940" y="226" width="310" height="32" rx="7"/>
+  <text class="s" x="952" y="247">OIDC JWKS · token signature check</text>
+
+  <!-- r4 -->
+  <path class="conn" d="M880,422 H940"/>
+  <rect class="store" x="940" y="406" width="310" height="32" rx="7"/>
+  <text class="s" x="952" y="427">Postgres · ontology release (TTL reload)</text>
+  <path class="conn" d="M880,462 H940"/>
+  <rect class="ai" x="940" y="446" width="310" height="32" rx="7"/>
+  <text class="s" x="952" y="467">Vertex AI · embeddings (lexical fallback)</text>
+
+  <!-- r5 -->
+  <path class="conn" d="M880,518 H940"/>
+  <rect class="store" x="940" y="502" width="310" height="32" rx="7"/>
+  <text class="s" x="952" y="523">Plan cache · Redis or in-process LRU</text>
+  <path class="conn" d="M880,558 H940"/>
+  <rect class="ai" x="940" y="542" width="310" height="32" rx="7"/>
+  <text class="s" x="952" y="563">Gemini · structured output · breaker</text>
+
+  <!-- r6 -->
+  <path class="conn" d="M880,634 H940"/>
+  <rect class="obs" x="940" y="618" width="310" height="32" rx="7"/>
+  <text class="s" x="952" y="639">In-process only: ontology + sqlglot</text>
+
+  <!-- r7 human approval -->
+  <path d="M882,730 H938" stroke="#8A6D00" stroke-width="1.4" fill="none" marker-start="url(#ag)" marker-end="url(#ag)"/>
+  <rect class="human" x="940" y="694" width="310" height="72" rx="8"/>
+  <text x="952" y="716" style="font-size:12.5px;font-weight:700;fill:#5C4A00">Human approval (LangGraph interrupt)</text>
+  <text class="s" x="952" y="736">Client receives outcome approval_required</text>
+  <text class="s" x="952" y="754">POST /ask/approve resumes or cancels</text>
+
+  <!-- r8 -->
+  <path class="conn" d="M880,826 H940"/>
+  <rect class="wh" x="940" y="810" width="310" height="32" rx="7"/>
+  <text class="s" x="952" y="831">Databricks · Snowflake · SQLite (demo)</text>
+
+  <!-- r10 -->
+  <path class="conn" d="M880,1018 H940"/>
+  <rect class="ext" x="940" y="1002" width="310" height="32" rx="7"/>
+  <text class="s" x="952" y="1023">MCP tools · question only · 5 s timeout</text>
+
+  <!-- r11 -->
+  <path class="conn" d="M880,1094 H940"/>
+  <rect class="store" x="940" y="1078" width="310" height="32" rx="7"/>
+  <text class="s" x="952" y="1099">Postgres · checkpoints (thread state)</text>
+  <path class="conn" d="M880,1134 H940"/>
+  <rect class="obs" x="940" y="1118" width="310" height="32" rx="7"/>
+  <text class="s" x="952" y="1139">JSON audit log · Prometheus metrics</text>
+
+  <!-- r12 outcomes -->
+  <rect x="940" y="1190" width="310" height="72" rx="8" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="952" y="1212" style="font-size:12.5px;font-weight:700;fill:#0F172A">Outcomes</text>
+  <text class="s" x="952" y="1232">ok · clarification · blocked · denied</text>
+  <text class="s" x="952" y="1250">approval_required · cancelled · error</text>
+
+  <!-- ===== legend ===== -->
+  <line x1="40" y1="1290" x2="1250" y2="1290" stroke="#E2E8F0"/>
+  <g transform="translate(40,1306)">
+    <rect class="client" width="14" height="14" rx="3"/><text class="lg" x="20" y="11">client / response</text>
+    <rect class="api" x="130" width="14" height="14" rx="3"/><text class="lg" x="150" y="11">API layer</text>
+    <rect class="node" x="232" width="14" height="14" rx="3"/><text class="lg" x="252" y="11">graph step</text>
+    <rect class="store" x="338" width="14" height="14" rx="3"/><text class="lg" x="358" y="11">data store</text>
+    <rect class="ai" x="440" width="14" height="14" rx="3"/><text class="lg" x="460" y="11">AI service</text>
+    <rect class="wh" x="542" width="14" height="14" rx="3"/><text class="lg" x="562" y="11">warehouse</text>
+    <rect class="ext" x="642" width="14" height="14" rx="3"/><text class="lg" x="662" y="11">identity / tools</text>
+    <rect class="human" x="768" width="14" height="14" rx="3"/><text class="lg" x="788" y="11">human step</text>
+    <rect class="obs" x="874" width="14" height="14" rx="3"/><text class="lg" x="894" y="11">in-process / observability</text>
+    <line x1="1060" y1="7" x2="1090" y2="7" class="exit"/><text class="lg" x="1096" y="11">early exit</text>
+  </g>
+</svg>

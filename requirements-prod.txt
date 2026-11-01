@@ -1,0 +1,9 @@
+-r requirements.txt
+google-genai
+psycopg[binary,pool]>=3.1
+langgraph-checkpoint-postgres
+databricks-sql-connector
+snowflake-connector-python
+PyJWT[crypto]>=2.8
+redis>=5.0
+langchain-mcp-adapters

@@ -1,0 +1,12 @@
+-r requirements.txt
+pytest>=8.0
+httpx>=0.27
+ruff>=0.5
+pip-audit
+# exercised in tests: OIDC, Redis backends (fakeredis offline, real Redis in tests/integration),
+# Postgres loader/checkpointer/jobs (tests/integration)
+PyJWT[crypto]>=2.8
+redis>=5.0
+fakeredis[lua]>=2.23
+psycopg[binary,pool]>=3.1
+langgraph-checkpoint-postgres

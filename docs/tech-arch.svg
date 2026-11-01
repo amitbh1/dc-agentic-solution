@@ -1,0 +1,269 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1640" height="980" viewBox="0 0 1640 980" role="img" aria-labelledby="title desc">
+  <title id="title">dc-agent: technical architecture</title>
+  <desc id="desc">Clients reach the dc-agent service through an ingress. Inside the service are the API, the LangGraph agent and the domain modules. Platform services (OIDC, Redis, Postgres) are on the left, operations (observability, scheduled jobs, CI) on the right, and external services (Vertex AI, Databricks, Snowflake, MCP) below.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="ai" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6366F1"/>
+    </marker>
+    <style>
+      text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      .m { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+      .h1 { font-size: 22px; font-weight: 700; fill: #0F172A; }
+      .h2 { font-size: 13px; fill: #475569; }
+      .hdr { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; fill: #64748B; }
+      .t { font-size: 14px; font-weight: 700; fill: #0F172A; }
+      .tm { font-size: 12.5px; font-weight: 700; fill: #312E81; }
+      .d { font-size: 12px; fill: #334155; }
+      .dm { font-size: 11.5px; fill: #334155; }
+      .g { font-size: 11px; fill: #64748B; }
+      .lbl { font-size: 10.5px; fill: #475569; }
+      .pill { font-size: 9.8px; fill: #312E81; }
+      .lg { font-size: 11px; fill: #334155; }
+      .client { fill: #FFFFFF; stroke: #334155; stroke-width: 1.3; }
+      .edge { fill: #F1F5F9; stroke: #475569; stroke-width: 1.3; }
+      .svc { fill: #F7F7FF; stroke: #4338CA; stroke-width: 1.6; }
+      .band { fill: #F1F5F9; stroke: #475569; }
+      .agent { fill: #EEF0FF; stroke: #4338CA; }
+      .p { fill: #FFFFFF; stroke: #818CF8; }
+      .mod { fill: #FFFFFF; stroke: #A5B4FC; }
+      .boot { fill: #FFFFFF; stroke: #94A3B8; stroke-dasharray: 5 4; }
+      .store { fill: #E7F5EC; stroke: #2E7D4F; stroke-width: 1.3; }
+      .aisvc { fill: #FFF3DF; stroke: #B26A00; stroke-width: 1.3; }
+      .wh { fill: #E8F0FE; stroke: #1A5FB4; stroke-width: 1.3; }
+      .ext { fill: #F3E9FB; stroke: #7B3FB5; stroke-width: 1.3; }
+      .ops { fill: #F1F3F5; stroke: #5F6B7A; stroke-width: 1.3; }
+      .ln { stroke: #475569; stroke-width: 1.5; fill: none; }
+    </style>
+  </defs>
+
+  <rect width="1640" height="980" fill="#FFFFFF"/>
+
+  <!-- header -->
+  <text class="h1" x="30" y="42">dc-agent · technical architecture</text>
+  <text class="h2" x="30" y="66">One stateless service (scale with replicas). Durable state lives in Postgres, shared limits in Redis; the LLM plans, the compiler writes SQL, warehouses run it read-only.</text>
+
+  <!-- ===== clients ===== -->
+  <text class="hdr" x="450" y="88">CLIENTS</text>
+  <rect class="client" x="450" y="96" width="220" height="52" rx="9"/>
+  <text class="t" x="560" y="119" text-anchor="middle">Chat UI / apps</text>
+  <text class="g" x="560" y="137" text-anchor="middle">JSON or server-sent events</text>
+  <rect class="client" x="700" y="96" width="220" height="52" rx="9"/>
+  <text class="t" x="810" y="119" text-anchor="middle">API consumers</text>
+  <text class="g" x="810" y="137" text-anchor="middle">scripts, notebooks, services</text>
+  <rect class="client" x="950" y="96" width="220" height="52" rx="9"/>
+  <text class="t" x="1060" y="119" text-anchor="middle">Eval runner</text>
+  <text class="g" x="1060" y="137" text-anchor="middle">golden set via --base-url</text>
+
+  <path class="ln" d="M560,148 V174" marker-end="url(#a)"/>
+  <path class="ln" d="M810,148 V174" marker-end="url(#a)"/>
+  <path class="ln" d="M1060,148 V174" marker-end="url(#a)"/>
+
+  <rect class="edge" x="450" y="176" width="720" height="44" rx="9"/>
+  <text class="t" x="810" y="203" text-anchor="middle">Ingress / API gateway <tspan class="g" style="font-weight:400">· TLS termination · routes to replicas</tspan></text>
+
+  <path class="ln" d="M810,220 V248" marker-end="url(#a)"/>
+  <text class="lbl" x="820" y="240">HTTPS · Bearer token (OIDC JWT)</text>
+
+  <!-- ===== service ===== -->
+  <rect class="svc" x="360" y="250" width="900" height="470" rx="16"/>
+  <text x="380" y="276" style="font-size:15px;font-weight:700;fill:#312E81">dc-agent service <tspan class="g" style="font-weight:400;font-size:12px">· Python · FastAPI + LangGraph · one worker per container, N replicas · non-root image</tspan></text>
+
+  <!-- api band -->
+  <rect class="band" x="380" y="290" width="860" height="76" rx="9"/>
+  <text class="tm m" x="396" y="312">api/</text>
+  <text class="d" x="396" y="334">POST /ask · /ask/stream · /ask/approve · /feedback   |   GET /healthz · /readyz · /metrics</text>
+  <text class="d" x="396" y="354">middleware: request id · 16 KB body cap · OIDC auth · session single-flight · rate limits and budgets</text>
+
+  <!-- agent band -->
+  <rect class="agent" x="380" y="380" width="860" height="102" rx="9"/>
+  <text class="tm m" x="396" y="402">agent/ <tspan style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-weight:400;fill:#334155;font-size:12px">fixed LangGraph graph · state checkpointed per user:session thread</tspan></text>
+  <g>
+    <rect class="p" x="390" y="414" width="80" height="30" rx="15"/><text class="pill m" x="430" y="433" text-anchor="middle">guard_input</text>
+    <rect class="p" x="485" y="414" width="80" height="30" rx="15"/><text class="pill m" x="525" y="433" text-anchor="middle">ground</text>
+    <rect class="p" x="580" y="414" width="80" height="30" rx="15"/><text class="pill m" x="620" y="433" text-anchor="middle">planner</text>
+    <rect class="p" x="675" y="414" width="80" height="30" rx="15"/><text class="pill m" x="715" y="433" text-anchor="middle">compile</text>
+    <rect class="p" x="770" y="414" width="80" height="30" rx="15"/><text class="pill m" x="810" y="433" text-anchor="middle">cost_check</text>
+    <rect class="p" x="865" y="414" width="80" height="30" rx="15"/><text class="pill m" x="905" y="433" text-anchor="middle">execute</text>
+    <rect class="p" x="960" y="414" width="80" height="30" rx="15"/><text class="pill m" x="1000" y="433" text-anchor="middle">check_result</text>
+    <rect class="p" x="1055" y="414" width="80" height="30" rx="15" style="stroke-dasharray:4 3"/><text class="pill m" x="1095" y="433" text-anchor="middle">enrich</text>
+    <rect class="p" x="1150" y="414" width="80" height="30" rx="15"/><text class="pill m" x="1190" y="433" text-anchor="middle">respond</text>
+  </g>
+  <g stroke="#6366F1" stroke-width="1.3" marker-end="url(#ai)">
+    <line x1="471" y1="429" x2="483" y2="429"/>
+    <line x1="566" y1="429" x2="578" y2="429"/>
+    <line x1="661" y1="429" x2="673" y2="429"/>
+    <line x1="756" y1="429" x2="768" y2="429"/>
+    <line x1="851" y1="429" x2="863" y2="429"/>
+    <line x1="946" y1="429" x2="958" y2="429"/>
+    <line x1="1041" y1="429" x2="1053" y2="429"/>
+    <line x1="1136" y1="429" x2="1148" y2="429"/>
+  </g>
+  <text class="g" x="396" y="470">bounded: ≤ 2 repairs · 60 s turn deadline · recursion limit 25 · cost gate may pause for human approval · every node has a safety net</text>
+
+  <!-- bootstrap -->
+  <rect class="boot" x="380" y="494" width="860" height="26" rx="6"/>
+  <text x="396" y="511" style="font-size:11.5px;fill:#334155"><tspan class="m" style="font-weight:700;fill:#312E81">bootstrap.py</tspan>  composition root: wires every module below from Settings (demo or prod); fails fast on bad config</text>
+
+  <!-- module grid row 1 -->
+  <rect class="mod" x="380" y="532" width="160" height="82" rx="8"/>
+  <text class="tm m" x="392" y="556">semantic/</text>
+  <text class="dm" x="392" y="578">ontology · grounding</text>
+  <text class="dm" x="392" y="596">embeddings · checks</text>
+
+  <rect class="mod" x="555" y="532" width="160" height="82" rx="8"/>
+  <text class="tm m" x="567" y="556">query/</text>
+  <text class="dm" x="567" y="578">compiler · SQL guard</text>
+  <text class="dm" x="567" y="596">time · cross-engine</text>
+
+  <rect class="mod" x="730" y="532" width="160" height="82" rx="8"/>
+  <text class="tm m" x="742" y="556">llm/</text>
+  <text class="dm" x="742" y="578">prompts · Gemini</text>
+  <text class="dm" x="742" y="596">demo stand-in</text>
+
+  <rect class="mod" x="905" y="532" width="160" height="82" rx="8"/>
+  <text class="tm m" x="917" y="556">warehouse/</text>
+  <text class="dm" x="917" y="578">Databricks · Snowflake</text>
+  <text class="dm" x="917" y="596">EXPLAIN estimates</text>
+
+  <rect class="mod" x="1080" y="532" width="160" height="82" rx="8"/>
+  <text class="tm m" x="1092" y="556">security/</text>
+  <text class="dm" x="1092" y="578">OIDC · input screen</text>
+  <text class="dm" x="1092" y="596">PII redaction</text>
+
+  <!-- module grid row 2 -->
+  <rect class="mod" x="380" y="626" width="160" height="82" rx="8"/>
+  <text class="tm m" x="392" y="650">memory/</text>
+  <text class="dm" x="392" y="672">plan cache (LRU/Redis)</text>
+  <text class="dm" x="392" y="690">checkpoints · feedback</text>
+
+  <rect class="mod" x="555" y="626" width="160" height="82" rx="8"/>
+  <text class="tm m" x="567" y="650">resilience/</text>
+  <text class="dm" x="567" y="672">retry · breaker</text>
+  <text class="dm" x="567" y="690">bulkhead · limits</text>
+
+  <rect class="mod" x="730" y="626" width="160" height="82" rx="8"/>
+  <text class="tm m" x="742" y="650">tools/</text>
+  <text class="dm" x="742" y="672">role-scoped registry</text>
+  <text class="dm" x="742" y="690">MCP adapter</text>
+
+  <rect class="mod" x="905" y="626" width="160" height="82" rx="8"/>
+  <text class="tm m" x="917" y="650">observability/</text>
+  <text class="dm" x="917" y="672">JSON audit log</text>
+  <text class="dm" x="917" y="690">Prometheus metrics</text>
+
+  <rect class="mod" x="1080" y="626" width="160" height="82" rx="8"/>
+  <text class="tm m" x="1092" y="650">core/</text>
+  <text class="dm" x="1092" y="672">settings (fail fast)</text>
+  <text class="dm" x="1092" y="690">error hierarchy</text>
+
+  <!-- ===== platform services (left) ===== -->
+  <text class="hdr" x="30" y="282">PLATFORM SERVICES</text>
+
+  <rect class="ext" x="30" y="290" width="260" height="76" rx="9"/>
+  <text class="t" x="44" y="312">Identity provider (OIDC)</text>
+  <text class="d" x="44" y="332">JWKS · RS256 JWTs</text>
+  <text class="d" x="44" y="350">roles · regions · tenant claims</text>
+
+  <rect class="store" x="30" y="380" width="260" height="102" rx="9"/>
+  <text class="t" x="44" y="402">Redis 7 (shared state)</text>
+  <text class="d" x="44" y="422">rate limits · daily and tenant budgets</text>
+  <text class="d" x="44" y="440">session locks · plan cache</text>
+  <text class="g" x="44" y="460">needed for &gt; 1 replica · local fallback</text>
+
+  <rect class="store" x="30" y="494" width="260" height="214" rx="9"/>
+  <text class="t" x="44" y="516">Postgres 16 + pgvector</text>
+  <text class="d" x="44" y="540">ontology.* : concepts, attributes,</text>
+  <text class="d" x="44" y="557">  metrics, grants, synonyms, releases</text>
+  <text class="d" x="44" y="580">verified_query + 768-d embeddings</text>
+  <text class="d" x="44" y="603">drift_event → trigger marks stale</text>
+  <text class="d" x="44" y="626">LangGraph checkpoints (threads)</text>
+  <text class="d" x="44" y="649">agent.feedback</text>
+  <text class="g" x="44" y="690">app user: read ontology, write state</text>
+
+  <!-- service <-> platform -->
+  <path class="ln" d="M292,328 H358" marker-start="url(#a)" marker-end="url(#a)"/>
+  <path class="ln" d="M292,431 H358" marker-start="url(#a)" marker-end="url(#a)"/>
+  <path class="ln" d="M292,601 H358" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="lbl" x="325" y="320" text-anchor="middle">keys</text>
+  <text class="lbl" x="325" y="423" text-anchor="middle">limits</text>
+  <text class="lbl" x="325" y="593" text-anchor="middle">state</text>
+
+  <!-- ===== operations (right) ===== -->
+  <text class="hdr" x="1320" y="282">OPERATIONS</text>
+
+  <rect class="ops" x="1320" y="290" width="290" height="140" rx="9"/>
+  <text class="t" x="1334" y="312">Observability</text>
+  <text class="d" x="1334" y="334">Prometheus scrapes /metrics</text>
+  <text class="d" x="1334" y="352">alert rules: deploy/prometheus</text>
+  <text class="d" x="1334" y="370">dashboard: deploy/grafana</text>
+  <text class="d" x="1334" y="388">JSON logs → log pipeline</text>
+  <text class="d" x="1334" y="406">LangSmith tracing (optional)</text>
+
+  <path class="ln" d="M1262,328 H1318" marker-start="url(#a)"/>
+  <text class="lbl" x="1290" y="320" text-anchor="middle">scrape</text>
+
+  <rect class="ops" x="1320" y="444" width="290" height="160" rx="9"/>
+  <text class="t" x="1334" y="466">Scheduled jobs <tspan class="m g" style="font-weight:400">dc_agent.jobs</tspan></text>
+  <text class="d" x="1334" y="488"><tspan class="m">drift</tspan> · every 15 min</text>
+  <text class="d" x="1334" y="506"><tspan class="m">embed</tspan> · after ontology edits</text>
+  <text class="d" x="1334" y="524"><tspan class="m">promote</tspan> · daily</text>
+  <text class="d" x="1334" y="542"><tspan class="m">retention</tspan> · daily</text>
+  <text class="d" x="1334" y="560"><tspan class="m">validate</tspan> · CI gate for releases</text>
+  <text class="g" x="1334" y="588">use Postgres, warehouses and Vertex AI</text>
+
+  <rect class="ops" x="1320" y="618" width="290" height="90" rx="9"/>
+  <text class="t" x="1334" y="640">CI · GitHub Actions</text>
+  <text class="d" x="1334" y="660">ruff · pytest + integration tests</text>
+  <text class="d" x="1334" y="678">(Postgres and Redis service containers)</text>
+  <text class="d" x="1334" y="696">golden evals · pip-audit</text>
+
+  <!-- ===== external services (below) ===== -->
+  <text class="hdr" x="30" y="812">EXTERNAL SERVICES</text>
+  <text class="g" x="30" y="830">reached only from the service</text>
+  <text class="g" x="30" y="846">and the scheduled jobs</text>
+
+  <path class="ln" d="M465,722 V788" marker-end="url(#a)"/>
+  <path class="ln" d="M695,722 V788" marker-end="url(#a)"/>
+  <path class="ln" d="M925,722 V788" marker-end="url(#a)"/>
+  <path class="ln" d="M1155,722 V788" marker-end="url(#a)"/>
+  <text class="lbl" x="473" y="760">plan · embed</text>
+  <text class="lbl" x="703" y="760">read-only SQL · EXPLAIN</text>
+  <text class="lbl" x="933" y="760">read-only SQL · EXPLAIN</text>
+  <text class="lbl" x="1163" y="760">question only</text>
+
+  <rect class="aisvc" x="360" y="790" width="210" height="90" rx="9"/>
+  <text class="t" x="374" y="813">Vertex AI</text>
+  <text class="d" x="374" y="834">Gemini → typed QueryPlan</text>
+  <text class="d" x="374" y="852">text-embedding-005 (768-d)</text>
+
+  <rect class="wh" x="590" y="790" width="210" height="90" rx="9"/>
+  <text class="t" x="604" y="813">Databricks SQL</text>
+  <text class="d" x="604" y="834">SELECT-only principal</text>
+  <text class="d" x="604" y="852">statement timeout · EXPLAIN</text>
+
+  <rect class="wh" x="820" y="790" width="210" height="90" rx="9"/>
+  <text class="t" x="834" y="813">Snowflake</text>
+  <text class="d" x="834" y="834">read-only role · warehouse</text>
+  <text class="d" x="834" y="852">EXPLAIN USING JSON</text>
+
+  <rect class="ext" x="1050" y="790" width="210" height="90" rx="9" style="stroke-dasharray:5 4"/>
+  <text class="t" x="1064" y="813">MCP servers (optional)</text>
+  <text class="d" x="1064" y="834">e.g. runbook search</text>
+  <text class="d" x="1064" y="852">adds notes, never sees rows</text>
+
+  <!-- ===== legend ===== -->
+  <line x1="30" y1="912" x2="1610" y2="912" stroke="#E2E8F0"/>
+  <g transform="translate(30,930)">
+    <rect class="client" width="14" height="14" rx="3"/><text class="lg" x="20" y="11">client / edge</text>
+    <rect class="svc" x="120" width="14" height="14" rx="3"/><text class="lg" x="140" y="11">dc-agent service</text>
+    <rect class="store" x="262" width="14" height="14" rx="3"/><text class="lg" x="282" y="11">data store</text>
+    <rect class="aisvc" x="370" width="14" height="14" rx="3"/><text class="lg" x="390" y="11">AI service</text>
+    <rect class="wh" x="476" width="14" height="14" rx="3"/><text class="lg" x="496" y="11">warehouse</text>
+    <rect class="ext" x="580" width="14" height="14" rx="3"/><text class="lg" x="600" y="11">identity / tools</text>
+    <rect class="ops" x="712" width="14" height="14" rx="3"/><text class="lg" x="732" y="11">operations</text>
+    <rect x="820" width="14" height="14" rx="3" fill="#FFFFFF" stroke="#94A3B8" stroke-dasharray="3 2"/><text class="lg" x="840" y="11">dashed = optional</text>
+  </g>
+</svg>
